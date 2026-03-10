@@ -186,11 +186,33 @@ const UniversalTranslator = () => {
         sendResponse({ success: true })
       }
       if (message.type === "GET_ARTICLE_TEXT") {
-        const documentClone = document.cloneNode(true) as Document
-        const reader = new Readability(documentClone)
-        const article = reader.parse()
-        const text = (article?.textContent || '').slice(0, 8000)
-        sendResponse({ title: article?.title || document.title, text })
+        let title = document.title
+        let text = ''
+        try {
+          const documentClone = document.cloneNode(true) as Document
+          const reader = new Readability(documentClone)
+          const article = reader.parse()
+          if (article?.textContent) text = article.textContent.slice(0, 8000)
+          if (article?.title) title = article.title
+        } catch (_) {}
+        // Readability 失败时，从段落收集文本
+        if (!text) {
+          const SELECTORS =
+            'article p, .post-content p, .entry-content p, .article-content p, ' +
+            '.content p, .story-body p, .article-body p, .td-post-content p, ' +
+            '.jeg_post_content p, main p, [role="main"] p, #content p, #main p'
+          let paras = Array.from(document.querySelectorAll(SELECTORS))
+            .filter((p) => (p.textContent?.trim() || '').length > 50)
+          if (paras.length === 0) {
+            paras = Array.from(document.querySelectorAll('p'))
+              .filter((p) => {
+                const t = p.textContent?.trim() || ''
+                return t.length > 50 && !p.closest('nav, footer, header, aside')
+              })
+          }
+          text = paras.map((p) => p.textContent?.trim()).filter(Boolean).join('\n\n').slice(0, 8000)
+        }
+        sendResponse({ title, text })
       }
       return true
     })
