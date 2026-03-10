@@ -14,6 +14,8 @@
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License"/>
 </p>
 
+
+
 ---
 
 ## What is DualCast?
@@ -25,7 +27,6 @@ Whether you're reading Hacker News, tech blogs, research papers, or news sites, 
 <p align="center">
   <img src="assets/popup-preview.svg" alt="DualCast popup interface" width="360"/>
 </p>
-
 ---
 
 ## Features
@@ -66,7 +67,6 @@ Whether you're reading Hacker News, tech blogs, research papers, or news sites, 
 <p align="center">
   <img src="assets/how-it-works.svg" alt="How DualCast works — browse, translate, summarize" width="100%"/>
 </p>
-
 ---
 
 ## Installation
@@ -107,10 +107,12 @@ bun run package    # Package for distribution
 
 ### Step 1: Choose a Translation Provider
 
-| Provider | Best For | Pricing |
-|----------|----------|---------|
+
+| Provider                | Best For                                                              | Pricing                                                      |
+| ----------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------ |
 | **DeepL** (Recommended) | High-quality translation, especially for European and Asian languages | [Free tier: 500K chars/month](https://www.deepl.com/pro-api) |
-| **OpenAI** | Flexible, supports custom models and endpoints | [Pay-as-you-go](https://platform.openai.com/api-keys) |
+| **OpenAI**              | Flexible, supports custom models and endpoints                        | [Pay-as-you-go](https://platform.openai.com/api-keys)        |
+
 
 ### Step 2: Enter Your API Key
 
@@ -172,13 +174,15 @@ User clicks "Translate"
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | [Plasmo](https://docs.plasmo.com/) — modern browser extension framework |
-| Language | TypeScript + React |
-| Translation | DeepL API, OpenAI API (GPT-4o-mini) |
-| Article Extraction | [@mozilla/readability](https://github.com/nicola/readability) |
-| Package Manager | [Bun](https://bun.sh) |
+
+| Layer              | Technology                                                              |
+| ------------------ | ----------------------------------------------------------------------- |
+| Framework          | [Plasmo](https://docs.plasmo.com/) — modern browser extension framework |
+| Language           | TypeScript + React                                                      |
+| Translation        | DeepL API, OpenAI API (GPT-4o-mini)                                     |
+| Article Extraction | [@mozilla/readability](https://github.com/nicola/readability)           |
+| Package Manager    | [Bun](https://bun.sh)                                                   |
+
 
 ---
 
