@@ -1,0 +1,186 @@
+import type { PlasmoCSConfig } from "plasmo"
+import { useEffect } from "react"
+
+export const config: PlasmoCSConfig = {
+  matches: ["https://news.ycombinator.com/*"],
+  all_frames: false
+}
+
+// 主组件
+const HNEnhancer = () => {
+  useEffect(() => {
+    console.log("HN Dual: Enhancing Hacker News page...")
+
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (message.type === "TRANSLATE_PAGE") {
+        sendResponse({ success: true })
+        translateCurrentPage()
+      }
+      return true
+    })
+  }, [])
+
+  return null
+}
+
+// 向 popup 报告进度（fire-and-forget，popup 不一定开着）
+function reportProgress(done: number, total: number) {
+  chrome.runtime.sendMessage({ type: "TRANSLATION_PROGRESS", done, total }).catch(() => {})
+}
+
+function reportComplete(total: number) {
+  chrome.runtime.sendMessage({ type: "TRANSLATION_COMPLETE", total }).catch(() => {})
+}
+
+function reportError(message: string) {
+  chrome.runtime.sendMessage({ type: "TRANSLATION_ERROR", message }).catch(() => {})
+}
+
+// 翻译当前页面
+async function translateCurrentPage() {
+  console.log("开始翻译页面...")
+
+  // 先统计总数
+  const titleLinks = Array.from(
+    document.querySelectorAll('.titleline > a:not([data-hn-dual-translated])')
+  ).filter((el) => (el.textContent || "").trim().length >= 5)
+
+  const topTexts = Array.from(
+    document.querySelectorAll('.toptext:not([data-hn-dual-translated])')
+  ).filter((el) => (el.textContent || "").trim().length >= 10)
+
+  const comments = Array.from(
+    document.querySelectorAll('.commtext:not([data-hn-dual-translated])')
+  ).filter((el) => (el.textContent || "").trim().length >= 10)
+
+  const total = titleLinks.length + topTexts.length + comments.length
+  let done = 0
+
+  reportProgress(done, total)
+
+  try {
+    // 翻译标题
+    for (const link of titleLinks) {
+      const titleElement = link as HTMLAnchorElement
+      titleElement.setAttribute('data-hn-dual-translated', 'true')
+
+      const text = titleElement.textContent || ""
+      try {
+        const response = await chrome.runtime.sendMessage({
+          type: "TRANSLATE",
+          text,
+          targetLang: "zh"
+        })
+
+        if (response.translation) {
+          const translationDiv = document.createElement('div')
+          translationDiv.className = 'hn-dual-translation'
+          translationDiv.style.cssText = `
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 4px;
+            line-height: 1.4;
+            padding: 4px 0;
+          `
+          translationDiv.textContent = response.translation
+
+          const titleRow = titleElement.closest('.athing')
+          if (titleRow && titleRow.nextElementSibling) {
+            const subtext = titleRow.nextElementSibling.querySelector('.subtext')
+            if (subtext) {
+              subtext.parentElement?.insertBefore(translationDiv, subtext)
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Translation error:", error)
+      }
+
+      done++
+      reportProgress(done, total)
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    }
+
+    // 翻译 Ask HN 帖子正文
+    for (const topText of topTexts) {
+      const topTextElement = topText as HTMLElement
+      topTextElement.setAttribute('data-hn-dual-translated', 'true')
+
+      const text = topTextElement.textContent || ""
+      try {
+        const response = await chrome.runtime.sendMessage({
+          type: "TRANSLATE",
+          text,
+          targetLang: "zh"
+        })
+
+        if (response.translation) {
+          const translationDiv = document.createElement('div')
+          translationDiv.className = 'hn-dual-toptext-translation'
+          translationDiv.style.cssText = `
+            background: #f6f6ef;
+            padding: 8px;
+            margin-top: 8px;
+            border-left: 2px solid #ff6600;
+            color: #333;
+            font-size: 0.95em;
+            line-height: 1.5;
+          `
+          translationDiv.textContent = response.translation
+          topTextElement.after(translationDiv)
+        }
+      } catch (error) {
+        console.error("Translation error:", error)
+      }
+
+      done++
+      reportProgress(done, total)
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    }
+
+    // 翻译评论
+    for (const comment of comments) {
+      const commentElement = comment as HTMLElement
+      commentElement.setAttribute('data-hn-dual-translated', 'true')
+
+      const text = commentElement.textContent || ""
+      try {
+        const response = await chrome.runtime.sendMessage({
+          type: "TRANSLATE",
+          text,
+          targetLang: "zh"
+        })
+
+        if (response.translation) {
+          const translationDiv = document.createElement('div')
+          translationDiv.className = 'hn-dual-comment-translation'
+          translationDiv.style.cssText = `
+            background: #f6f6ef;
+            padding: 8px;
+            margin-top: 8px;
+            border-left: 2px solid #ff6600;
+            color: #333;
+            font-size: 0.95em;
+            line-height: 1.5;
+          `
+          translationDiv.textContent = response.translation
+          commentElement.appendChild(translationDiv)
+        }
+      } catch (error) {
+        console.error("Translation error:", error)
+      }
+
+      done++
+      reportProgress(done, total)
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    }
+
+    console.log("翻译完成！")
+    reportComplete(total)
+  } catch (error) {
+    console.error("翻译失败:", error)
+    reportError(error instanceof Error ? error.message : "翻译失败")
+  }
+}
+
+export default HNEnhancer
