@@ -48,7 +48,7 @@ async function flushQueue() {
   if (requestQueue.length === 0) return
 
   const batch = requestQueue.splice(0, BATCH_SIZE)
-  const settings = await chrome.storage.sync.get(["apiKey", "apiProvider"])
+  const settings = await chrome.storage.local.get(["apiKey", "apiProvider"])
 
   if (!settings.apiKey) {
     const err = new Error("请先在插件设置中配置 API Key")

@@ -6,15 +6,41 @@ export const config: PlasmoCSConfig = {
   all_frames: false
 }
 
+// 控制翻译内容的可见性
+const VISIBILITY_STYLE_ID = "hn-dual-visibility"
+const HIDE_CSS = `.hn-dual-translation, .hn-dual-comment-translation, .hn-dual-toptext-translation { display: none !important; }`
+
+function applyVisibility(show: boolean) {
+  let el = document.getElementById(VISIBILITY_STYLE_ID) as HTMLStyleElement | null
+  if (!show) {
+    if (!el) {
+      el = document.createElement("style")
+      el.id = VISIBILITY_STYLE_ID
+      document.head.appendChild(el)
+    }
+    el.textContent = HIDE_CSS
+  } else {
+    el?.remove()
+  }
+}
+
 // 主组件
 const HNEnhancer = () => {
   useEffect(() => {
     console.log("HN Dual: Enhancing Hacker News page...")
 
+    // 初始化可见性
+    chrome.storage.local.get(["showTranslations"], (result) => {
+      applyVisibility(result.showTranslations !== false)
+    })
+
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message.type === "TRANSLATE_PAGE") {
         sendResponse({ success: true })
         translateCurrentPage()
+      }
+      if (message.type === "TOGGLE_TRANSLATIONS") {
+        applyVisibility(message.show)
       }
       return true
     })

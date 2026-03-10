@@ -1,5 +1,5 @@
 import type { PlasmoCSConfig } from "plasmo"
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { Readability } from "@mozilla/readability"
 
 export const config: PlasmoCSConfig = {
@@ -8,15 +8,30 @@ export const config: PlasmoCSConfig = {
   all_frames: false
 }
 
+// 控制翻译内容的可见性
+const VISIBILITY_STYLE_ID = "hn-dual-visibility"
+const HIDE_CSS = `.hn-dual-translation { display: none !important; }`
+
+function applyVisibility(show: boolean) {
+  let el = document.getElementById(VISIBILITY_STYLE_ID) as HTMLStyleElement | null
+  if (!show) {
+    if (!el) {
+      el = document.createElement("style")
+      el.id = VISIBILITY_STYLE_ID
+      document.head.appendChild(el)
+    }
+    el.textContent = HIDE_CSS
+  } else {
+    el?.remove()
+  }
+}
+
 // 判断当前页面是否从 HN 跳转过来
 async function isFromHackerNews(): Promise<boolean> {
-  // 同标签页跳转：referrer 直接包含 HN 域名
   if (document.referrer.includes("news.ycombinator.com")) {
     console.log("HN Dual: referrer is HN")
     return true
   }
-
-  // 新标签页打开：background 通过 webNavigation 追踪
   try {
     const response = await chrome.runtime.sendMessage({ type: "CHECK_HN_REFERRER" })
     console.log("HN Dual: background check result:", response?.isFromHN)
@@ -47,23 +62,15 @@ function detectArticle() {
       return text.length > 50
     }) as HTMLElement[]
 
-    return {
-      title: article.title,
-      content: article.textContent,
-      paragraphs
-    }
+    return { title: article.title, paragraphs }
   } catch (error) {
     console.error("Article detection error:", error)
     return null
   }
 }
 
-// 翻译文章
-async function translateArticle(article: {
-  title: string
-  content: string
-  paragraphs: HTMLElement[]
-}) {
+// 翻译文章，样式继承原页面
+async function translateArticle(article: { title: string; paragraphs: HTMLElement[] }) {
   const titleElement = document.querySelector("h1")
   if (titleElement && !titleElement.querySelector(".hn-dual-translation")) {
     try {
@@ -72,18 +79,19 @@ async function translateArticle(article: {
         text: article.title,
         targetLang: "zh"
       })
-
       if (response.translation) {
-        const translationDiv = document.createElement("div")
-        translationDiv.className = "hn-dual-translation"
-        translationDiv.style.cssText = `
-          color: #666;
-          font-size: 0.8em;
-          margin-top: 8px;
+        const div = document.createElement("div")
+        div.className = "hn-dual-translation"
+        // 继承 h1 字体，稍微缩小、变灰
+        div.style.cssText = `
+          font-size: 0.75em;
           font-weight: normal;
+          color: inherit;
+          opacity: 0.65;
+          margin-top: 6px;
         `
-        translationDiv.textContent = response.translation
-        titleElement.appendChild(translationDiv)
+        div.textContent = response.translation
+        titleElement.appendChild(div)
       }
     } catch (error) {
       console.error("Title translation error:", error)
@@ -102,21 +110,17 @@ async function translateArticle(article: {
         text,
         targetLang: "zh"
       })
-
       if (response.translation) {
-        const translationDiv = document.createElement("div")
-        translationDiv.className = "hn-dual-translation"
-        translationDiv.style.cssText = `
-          background: #f8f9fa;
-          border-left: 3px solid #ff6600;
-          padding: 12px;
-          margin: 8px 0;
-          font-size: 0.95em;
-          color: #333;
-          line-height: 1.6;
+        const div = document.createElement("div")
+        div.className = "hn-dual-translation"
+        // 完全继承原段落的字体/大小/颜色，只加透明度区分
+        div.style.cssText = `
+          display: block;
+          margin-top: 0.4em;
+          opacity: 0.7;
         `
-        translationDiv.textContent = response.translation
-        paragraph.after(translationDiv)
+        div.textContent = response.translation
+        paragraph.after(div)
       }
     } catch (error) {
       console.error("Paragraph translation error:", error)
@@ -126,12 +130,20 @@ async function translateArticle(article: {
   }
 }
 
-// 主组件：只在从 HN 打开时自动翻译
+// 主组件：只在从 HN 打开时自动翻译，不显示任何 UI
 const AutoTranslator = () => {
-  // "idle" | "translating" | "done"
-  const [status, setStatus] = useState<"idle" | "translating" | "done">("idle")
-
   useEffect(() => {
+    // 初始化可见性
+    chrome.storage.local.get(["showTranslations"], (result) => {
+      applyVisibility(result.showTranslations !== false)
+    })
+
+    // 监听显示/隐藏切换
+    chrome.runtime.onMessage.addListener((message) => {
+      if (message.type === "TOGGLE_TRANSLATIONS") {
+        applyVisibility(message.show)
+      }
+    })
     ;(async () => {
       const fromHN = await isFromHackerNews()
       if (!fromHN) return
@@ -139,42 +151,12 @@ const AutoTranslator = () => {
       const article = detectArticle()
       if (!article) return
 
-      setStatus("translating")
-      try {
-        await translateArticle(article)
-        setStatus("done")
-        // 2 秒后淡出提示
-        setTimeout(() => setStatus("idle"), 2000)
-      } catch (error) {
-        console.error("Auto-translation error:", error)
-        setStatus("idle")
-      }
+      await translateArticle(article)
     })()
   }, [])
 
-  if (status === "idle") return null
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        bottom: "20px",
-        right: "20px",
-        padding: "8px 14px",
-        borderRadius: "20px",
-        background: status === "done" ? "#4caf50" : "#ff6600",
-        color: "white",
-        fontSize: "13px",
-        fontFamily: "system-ui, -apple-system, sans-serif",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-        zIndex: 10000,
-        userSelect: "none",
-        transition: "background 0.3s"
-      }}
-    >
-      {status === "translating" ? "⏳ 正在翻译..." : "✓ 翻译完成"}
-    </div>
-  )
+  // 不渲染任何 UI
+  return null
 }
 
 export default AutoTranslator

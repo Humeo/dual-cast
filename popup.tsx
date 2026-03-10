@@ -9,15 +9,16 @@ function IndexPopup() {
   const [status, setStatus] = useState<Status>("idle")
   const [progress, setProgress] = useState({ done: 0, total: 0 })
   const [errorMsg, setErrorMsg] = useState("")
+  const [showTranslations, setShowTranslations] = useState(true)
   const listenerRef = useRef<(msg: any) => void>()
 
   useEffect(() => {
-    chrome.storage.sync.get(["apiKey", "apiProvider"], (result) => {
+    chrome.storage.local.get(["apiKey", "apiProvider", "showTranslations"], (result) => {
       if (result.apiKey) setApiKey(result.apiKey)
       if (result.apiProvider) setApiProvider(result.apiProvider)
+      setShowTranslations(result.showTranslations !== false)
     })
 
-    // 监听来自 content script 的进度消息
     const listener = (message: any) => {
       if (message.type === "TRANSLATION_PROGRESS") {
         setProgress({ done: message.done, total: message.total })
@@ -32,14 +33,11 @@ function IndexPopup() {
     }
     listenerRef.current = listener
     chrome.runtime.onMessage.addListener(listener)
-
-    return () => {
-      chrome.runtime.onMessage.removeListener(listener)
-    }
+    return () => chrome.runtime.onMessage.removeListener(listener)
   }, [])
 
   const handleSave = async () => {
-    chrome.storage.sync.set({ apiKey, apiProvider }, () => {
+    chrome.storage.local.set({ apiKey, apiProvider }, () => {
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     })
@@ -69,6 +67,20 @@ function IndexPopup() {
     } catch (error) {
       setErrorMsg("无法连接到页面，请刷新后重试")
       setStatus("error")
+    }
+  }
+
+  const handleToggleVisibility = async () => {
+    const next = !showTranslations
+    setShowTranslations(next)
+    chrome.storage.local.set({ showTranslations: next })
+
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (tabs[0]?.id) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        type: "TOGGLE_TRANSLATIONS",
+        show: next
+      }).catch(() => {})
     }
   }
 
@@ -138,19 +150,11 @@ function IndexPopup() {
             boxSizing: "border-box"
           }}
         />
-        <p
-          style={{
-            fontSize: "12px",
-            color: "#666",
-            margin: "4px 0 0 0"
-          }}>
+        <p style={{ fontSize: "12px", color: "#666", margin: "4px 0 0 0" }}>
           {apiProvider === "deepl" ? (
             <>
               获取 API Key:{" "}
-              <a
-                href="https://www.deepl.com/pro-api"
-                target="_blank"
-                style={{ color: "#ff6600" }}>
+              <a href="https://www.deepl.com/pro-api" target="_blank" style={{ color: "#ff6600" }}>
                 deepl.com/pro-api
               </a>
               <br />
@@ -161,10 +165,7 @@ function IndexPopup() {
           ) : (
             <>
               获取 API Key:{" "}
-              <a
-                href="https://platform.openai.com/api-keys"
-                target="_blank"
-                style={{ color: "#ff6600" }}>
+              <a href="https://platform.openai.com/api-keys" target="_blank" style={{ color: "#ff6600" }}>
                 platform.openai.com
               </a>
             </>
@@ -190,24 +191,43 @@ function IndexPopup() {
         {saved ? "✓ 已保存" : "保存设置"}
       </button>
 
-      <button
-        onClick={handleTranslate}
-        disabled={isTranslating || !apiKey}
-        style={{
-          width: "100%",
-          padding: "10px",
-          background: isTranslating ? "#999" : "#0066cc",
-          color: "white",
-          border: "none",
-          borderRadius: "4px",
-          fontSize: "14px",
-          fontWeight: "500",
-          cursor: isTranslating || !apiKey ? "not-allowed" : "pointer",
-          transition: "background 0.2s",
-          marginBottom: "12px"
-        }}>
-        {isTranslating ? "翻译中..." : "🌐 翻译当前页面"}
-      </button>
+      {/* 翻译 + 显示/隐藏 并排 */}
+      <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+        <button
+          onClick={handleTranslate}
+          disabled={isTranslating || !apiKey}
+          style={{
+            flex: 1,
+            padding: "10px",
+            background: isTranslating ? "#999" : "#0066cc",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            fontSize: "14px",
+            fontWeight: "500",
+            cursor: isTranslating || !apiKey ? "not-allowed" : "pointer",
+            transition: "background 0.2s"
+          }}>
+          {isTranslating ? "翻译中..." : "🌐 翻译当前页面"}
+        </button>
+
+        <button
+          onClick={handleToggleVisibility}
+          title={showTranslations ? "隐藏所有翻译" : "显示所有翻译"}
+          style={{
+            padding: "10px 14px",
+            background: showTranslations ? "#f0f0f0" : "#e8e8e8",
+            color: showTranslations ? "#333" : "#999",
+            border: "1px solid #ddd",
+            borderRadius: "4px",
+            fontSize: "14px",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            transition: "all 0.2s"
+          }}>
+          {showTranslations ? "👁 显示" : "🙈 隐藏"}
+        </button>
+      </div>
 
       {/* 翻译状态区域 */}
       {status !== "idle" && (
@@ -230,13 +250,7 @@ function IndexPopup() {
                 )}
               </div>
               {progress.total > 0 && (
-                <div
-                  style={{
-                    height: "4px",
-                    background: "#ddd",
-                    borderRadius: "2px",
-                    overflow: "hidden"
-                  }}>
+                <div style={{ height: "4px", background: "#ddd", borderRadius: "2px", overflow: "hidden" }}>
                   <div
                     style={{
                       height: "100%",
@@ -250,15 +264,9 @@ function IndexPopup() {
               )}
             </>
           )}
-          {status === "done" && (
-            <span>✓ 翻译完成，共 {progress.total} 条</span>
-          )}
-          {status === "error" && (
-            <span>✗ {errorMsg || "翻译失败，请检查 API Key 配置"}</span>
-          )}
-          {status === "wrong-page" && (
-            <span>请在 Hacker News 页面使用此功能</span>
-          )}
+          {status === "done" && <span>✓ 翻译完成，共 {progress.total} 条</span>}
+          {status === "error" && <span>✗ {errorMsg || "翻译失败，请检查 API Key 配置"}</span>}
+          {status === "wrong-page" && <span>请在 Hacker News 页面使用此功能</span>}
         </div>
       )}
 
