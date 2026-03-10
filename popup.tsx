@@ -19,8 +19,32 @@ function formatTime(ts: number): string {
   return `${Math.floor(diff / 86_400_000)} 天前`
 }
 
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "8px 10px",
+  borderRadius: "8px",
+  border: "1px solid #e5e7eb",
+  fontSize: "12px",
+  boxSizing: "border-box",
+  outline: "none",
+  background: "#fafafa",
+  color: "#111827",
+  fontFamily: "inherit",
+}
+
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  marginBottom: "5px",
+  fontWeight: "600",
+  fontSize: "11px",
+  color: "#6b7280",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+}
+
 function IndexPopup() {
   const [activeTab, setActiveTab] = useState<Tab>("translate")
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   // 设置
   const [apiKey, setApiKey] = useState("")
@@ -58,6 +82,7 @@ function IndexPopup() {
         if (result.apiModel) setApiModel(result.apiModel)
         setShowTranslations(result.showTranslations !== false)
         setHistory(result.summaryHistory || [])
+        if (!result.apiKey) setSettingsOpen(true)
       }
     )
 
@@ -83,7 +108,7 @@ function IndexPopup() {
   const handleSave = () => {
     chrome.storage.local.set({ apiKey, apiProvider, openaiKeyForSummary, apiBaseUrl, apiModel }, () => {
       setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
+      setTimeout(() => { setSaved(false); setSettingsOpen(false) }, 1200)
     })
   }
 
@@ -156,7 +181,6 @@ function IndexPopup() {
     setSummary(response.summary)
     setSummaryStatus("done")
 
-    // 保存到历史
     const newItem: HistoryItem = {
       url: tab.url || "",
       title: articleData.title,
@@ -178,250 +202,506 @@ function IndexPopup() {
 
   const isTranslating = transStatus === "translating"
   const isSummarizing = summaryStatus === "summarizing"
-
-  const tabStyle = (tab: Tab): React.CSSProperties => ({
-    flex: 1,
-    padding: "8px",
-    background: "none",
-    border: "none",
-    borderBottom: activeTab === tab ? "2px solid #ff6600" : "2px solid transparent",
-    color: activeTab === tab ? "#ff6600" : "#666",
-    fontWeight: activeTab === tab ? "600" : "400",
-    fontSize: "14px",
-    cursor: "pointer",
-    transition: "all 0.2s"
-  })
+  const hasApiKey = !!apiKey
+  const hasSummaryKey = !!(apiKey || openaiKeyForSummary)
 
   return (
-    <div style={{ width: "400px", fontFamily: "system-ui, -apple-system, sans-serif" }}>
-      {/* 标题 + 标签页 */}
-      <div style={{ padding: "16px 20px 0" }}>
-        <h2 style={{ margin: "0 0 12px 0", color: "#ff6600", fontSize: "16px" }}>🌐 HN Dual</h2>
-        <div style={{ display: "flex", borderBottom: "1px solid #eee" }}>
-          <button style={tabStyle("translate")} onClick={() => setActiveTab("translate")}>翻译 &amp; 总结</button>
-          <button style={tabStyle("history")} onClick={() => setActiveTab("history")}>
-            历史记录 {history.length > 0 && <span style={{ fontSize: "11px", color: "#999" }}>({history.length})</span>}
-          </button>
+    <div style={{ width: "380px", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif", background: "#f3f4f6" }}>
+
+      {/* ── Header ── */}
+      <div style={{
+        background: "linear-gradient(135deg, #ff5500 0%, #ff8c00 100%)",
+        padding: "14px 16px 12px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{
+            width: "34px", height: "34px", borderRadius: "10px",
+            background: "rgba(255,255,255,0.2)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: "18px",
+          }}>🌐</div>
+          <div>
+            <div style={{ color: "white", fontWeight: "700", fontSize: "15px", letterSpacing: "-0.3px" }}>HN Dual</div>
+            <div style={{ color: "rgba(255,255,255,0.75)", fontSize: "11px" }}>双语阅读 · AI 摘要</div>
+          </div>
         </div>
+        <button
+          onClick={() => setSettingsOpen(!settingsOpen)}
+          style={{
+            background: settingsOpen ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.15)",
+            border: "1px solid rgba(255,255,255,0.35)",
+            borderRadius: "8px",
+            color: "white",
+            padding: "6px 11px",
+            cursor: "pointer",
+            fontSize: "12px",
+            fontWeight: "500",
+            display: "flex",
+            alignItems: "center",
+            gap: "5px",
+            transition: "background 0.15s",
+            fontFamily: "inherit",
+          }}>
+          <span style={{ fontSize: "13px" }}>⚙️</span>
+          {hasApiKey ? "设置" : <span style={{ color: "#fde68a" }}>未配置</span>}
+        </button>
       </div>
 
-      {/* 翻译 & 总结 Tab */}
-      {activeTab === "translate" && (
-        <div style={{ padding: "16px 20px 20px" }}>
-          {/* 翻译服务 */}
-          <div style={{ marginBottom: "12px" }}>
-            <label style={{ display: "block", marginBottom: "6px", fontWeight: "500", fontSize: "13px" }}>翻译服务</label>
-            <select
-              value={apiProvider}
-              onChange={(e) => setApiProvider(e.target.value)}
-              style={{ width: "100%", padding: "7px", borderRadius: "4px", border: "1px solid #ddd", fontSize: "13px" }}>
-              <option value="deepl">DeepL (推荐)</option>
-              <option value="openai">OpenAI</option>
-            </select>
+      {/* ── Settings Panel ── */}
+      {settingsOpen && (
+        <div style={{
+          background: "white",
+          borderBottom: "1px solid #e5e7eb",
+          padding: "16px",
+        }}>
+          {/* Provider toggle */}
+          <div style={{ marginBottom: "14px" }}>
+            <label style={labelStyle}>翻译服务</label>
+            <div style={{ display: "flex", gap: "8px" }}>
+              {([
+                { value: "deepl", icon: "🔵", name: "DeepL", badge: "推荐" },
+                { value: "openai", icon: "🤖", name: "OpenAI", badge: "" },
+              ] as const).map((p) => (
+                <button
+                  key={p.value}
+                  onClick={() => setApiProvider(p.value)}
+                  style={{
+                    flex: 1,
+                    padding: "8px 10px",
+                    border: apiProvider === p.value ? "2px solid #ff6600" : "2px solid #e5e7eb",
+                    borderRadius: "8px",
+                    background: apiProvider === p.value ? "#fff8f0" : "#fafafa",
+                    color: apiProvider === p.value ? "#c2410c" : "#6b7280",
+                    fontWeight: apiProvider === p.value ? "600" : "400",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "5px",
+                    fontFamily: "inherit",
+                    transition: "all 0.15s",
+                  }}>
+                  {p.icon} {p.name}
+                  {p.badge && (
+                    <span style={{
+                      fontSize: "9px", background: "#ff6600", color: "white",
+                      borderRadius: "4px", padding: "1px 4px", fontWeight: "700"
+                    }}>{p.badge}</span>
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* API Key */}
+          {/* Translation API Key */}
           <div style={{ marginBottom: "12px" }}>
-            <label style={{ display: "block", marginBottom: "6px", fontWeight: "500", fontSize: "13px" }}>
+            <label style={labelStyle}>
               {apiProvider === "deepl" ? "DeepL API Key" : "OpenAI API Key"}
             </label>
             <input
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder={apiProvider === "deepl" ? "输入 DeepL API Key" : "输入 OpenAI API Key"}
-              style={{ width: "100%", padding: "7px", borderRadius: "4px", border: "1px solid #ddd", fontSize: "13px", boxSizing: "border-box" }}
+              placeholder={apiProvider === "deepl" ? "以 :fx 结尾为免费版" : "sk-..."}
+              style={inputStyle}
             />
-            <p style={{ fontSize: "11px", color: "#999", margin: "3px 0 0 0" }}>
-              {apiProvider === "deepl" ? (
-                <><a href="https://www.deepl.com/pro-api" target="_blank" style={{ color: "#ff6600" }}>deepl.com/pro-api</a>（Free API 以 :fx 结尾）</>
-              ) : (
-                <a href="https://platform.openai.com/api-keys" target="_blank" style={{ color: "#ff6600" }}>platform.openai.com</a>
-              )}
-            </p>
+            {apiProvider === "deepl" && (
+              <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#9ca3af" }}>
+                <a href="https://www.deepl.com/pro-api" target="_blank"
+                  style={{ color: "#ff6600", textDecoration: "none" }}>deepl.com/pro-api</a>
+                {" "}获取免费 API Key
+              </p>
+            )}
           </div>
 
-          {/* DeepL 用户额外配置 OpenAI Key 用于总结 */}
+          {/* OpenAI key for summary (DeepL users) */}
           {apiProvider === "deepl" && (
             <div style={{ marginBottom: "12px" }}>
-              <label style={{ display: "block", marginBottom: "6px", fontWeight: "500", fontSize: "13px" }}>
-                OpenAI API Key <span style={{ color: "#999", fontWeight: "400" }}>(AI 总结专用，选填)</span>
+              <label style={labelStyle}>
+                OpenAI Key{" "}
+                <span style={{ color: "#d1d5db", fontWeight: "400", textTransform: "none", letterSpacing: 0 }}>（AI 摘要专用，选填）</span>
               </label>
               <input
                 type="password"
                 value={openaiKeyForSummary}
                 onChange={(e) => setOpenaiKeyForSummary(e.target.value)}
-                placeholder="输入 OpenAI API Key 以启用 AI 总结"
-                style={{ width: "100%", padding: "7px", borderRadius: "4px", border: "1px solid #ddd", fontSize: "13px", boxSizing: "border-box" }}
+                placeholder="sk-..."
+                style={inputStyle}
               />
             </div>
           )}
 
-          {/* 自定义 API 地址 + 模型（OpenAI 兼容接口） */}
-          <div style={{ marginBottom: "12px" }}>
-            <label style={{ display: "block", marginBottom: "6px", fontWeight: "500", fontSize: "13px" }}>
-              API 地址 <span style={{ color: "#999", fontWeight: "400" }}>(选填，默认 OpenAI 官方)</span>
-            </label>
-            <input
-              type="text"
-              value={apiBaseUrl}
-              onChange={(e) => setApiBaseUrl(e.target.value)}
-              placeholder="https://api.openai.com"
-              style={{ width: "100%", padding: "7px", borderRadius: "4px", border: "1px solid #ddd", fontSize: "13px", boxSizing: "border-box" }}
-            />
-          </div>
-          <div style={{ marginBottom: "12px" }}>
-            <label style={{ display: "block", marginBottom: "6px", fontWeight: "500", fontSize: "13px" }}>
-              模型 <span style={{ color: "#999", fontWeight: "400" }}>(选填，默认 gpt-4o-mini)</span>
-            </label>
-            <input
-              type="text"
-              value={apiModel}
-              onChange={(e) => setApiModel(e.target.value)}
-              placeholder="gpt-4o-mini"
-              style={{ width: "100%", padding: "7px", borderRadius: "4px", border: "1px solid #ddd", fontSize: "13px", boxSizing: "border-box" }}
-            />
+          {/* Custom endpoint + model */}
+          <div style={{ display: "flex", gap: "8px", marginBottom: "14px" }}>
+            <div style={{ flex: 3 }}>
+              <label style={labelStyle}>API 地址 <span style={{ color: "#d1d5db", fontWeight: "400", textTransform: "none", letterSpacing: 0 }}>（选填）</span></label>
+              <input
+                type="text"
+                value={apiBaseUrl}
+                onChange={(e) => setApiBaseUrl(e.target.value)}
+                placeholder="https://api.openai.com"
+                style={inputStyle}
+              />
+            </div>
+            <div style={{ flex: 2 }}>
+              <label style={labelStyle}>模型 <span style={{ color: "#d1d5db", fontWeight: "400", textTransform: "none", letterSpacing: 0 }}>（选填）</span></label>
+              <input
+                type="text"
+                value={apiModel}
+                onChange={(e) => setApiModel(e.target.value)}
+                placeholder="gpt-4o-mini"
+                style={inputStyle}
+              />
+            </div>
           </div>
 
-          {/* 保存 */}
           <button
             onClick={handleSave}
             style={{
-              width: "100%", padding: "8px", background: saved ? "#4caf50" : "#ff6600",
-              color: "white", border: "none", borderRadius: "4px", fontSize: "13px",
-              fontWeight: "500", cursor: "pointer", transition: "background 0.2s", marginBottom: "12px"
+              width: "100%",
+              padding: "9px",
+              background: saved ? "#16a34a" : "linear-gradient(135deg, #ff5500, #ff8c00)",
+              color: "white",
+              border: "none",
+              borderRadius: "8px",
+              fontSize: "13px",
+              fontWeight: "600",
+              cursor: "pointer",
+              transition: "all 0.2s",
+              fontFamily: "inherit",
             }}>
             {saved ? "✓ 已保存" : "保存设置"}
           </button>
+        </div>
+      )}
 
-          {/* 翻译 + 显示/隐藏 */}
-          <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
-            <button
-              onClick={isTranslating ? handleStop : handleTranslate}
-              disabled={!isTranslating && !apiKey}
-              style={{
-                flex: 1, padding: "9px",
-                background: isTranslating ? "#e53935" : "#0066cc",
-                color: "white", border: "none", borderRadius: "4px", fontSize: "13px",
-                fontWeight: "500", cursor: (!isTranslating && !apiKey) ? "not-allowed" : "pointer",
-                transition: "background 0.2s"
-              }}>
-              {isTranslating ? "⏹ 停止翻译" : "🌐 翻译当前页面"}
-            </button>
-            <button
-              onClick={handleToggleVisibility}
-              title={showTranslations ? "隐藏所有翻译" : "显示所有翻译"}
-              style={{
-                padding: "9px 12px", background: showTranslations ? "#f0f0f0" : "#e8e8e8",
-                color: showTranslations ? "#333" : "#999", border: "1px solid #ddd",
-                borderRadius: "4px", fontSize: "13px", cursor: "pointer", whiteSpace: "nowrap"
-              }}>
-              {showTranslations ? "👁 显示" : "🙈 隐藏"}
-            </button>
-          </div>
-
-          {/* AI 总结 */}
+      {/* ── Tabs ── */}
+      <div style={{ display: "flex", background: "white", borderBottom: "1px solid #e5e7eb" }}>
+        {([
+          { key: "translate" as Tab, label: "翻译 & 摘要" },
+          { key: "history" as Tab, label: history.length > 0 ? `历史记录 (${history.length})` : "历史记录" },
+        ]).map(({ key, label }) => (
           <button
-            onClick={handleSummarize}
-            disabled={isSummarizing || (!apiKey && !openaiKeyForSummary)}
+            key={key}
+            onClick={() => setActiveTab(key)}
             style={{
-              width: "100%", padding: "9px",
-              background: isSummarizing ? "#999" : "#6200ea",
-              color: "white", border: "none", borderRadius: "4px", fontSize: "13px",
-              fontWeight: "500", cursor: (isSummarizing || (!apiKey && !openaiKeyForSummary)) ? "not-allowed" : "pointer",
-              transition: "background 0.2s", marginBottom: "12px"
+              flex: 1,
+              padding: "10px 8px",
+              background: "none",
+              border: "none",
+              borderBottom: activeTab === key ? "2px solid #ff6600" : "2px solid transparent",
+              color: activeTab === key ? "#ff6600" : "#9ca3af",
+              fontWeight: activeTab === key ? "600" : "400",
+              fontSize: "13px",
+              cursor: "pointer",
+              transition: "all 0.15s",
+              fontFamily: "inherit",
             }}>
-            {isSummarizing ? "⏳ 正在总结..." : "✨ AI 总结当前页面"}
+            {label}
           </button>
+        ))}
+      </div>
 
-          {/* 翻译状态 */}
-          {transStatus !== "idle" && (
-            <div style={{ padding: "10px 12px", borderRadius: "4px", fontSize: "13px", lineHeight: "1.5", marginBottom: "8px", ...transStatusStyle(transStatus) }}>
-              {transStatus === "translating" && (
-                <>
-                  <div style={{ marginBottom: "6px" }}>
-                    ⏳ 正在翻译...
-                    {progress.total > 0 && <span style={{ float: "right" }}>{progress.done} / {progress.total}</span>}
-                  </div>
-                  {progress.total > 0 && (
-                    <div style={{ height: "3px", background: "#ddd", borderRadius: "2px", overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${Math.round((progress.done / progress.total) * 100)}%`, background: "#ff6600", transition: "width 0.3s" }} />
-                    </div>
-                  )}
-                </>
-              )}
-              {transStatus === "done" && <span>✓ 翻译完成，共 {progress.total} 条</span>}
-              {transStatus === "stopped" && <span>⏹ 已停止，已翻译 {progress.done} / {progress.total} 条</span>}
-              {transStatus === "error" && <span>✗ {transError || "翻译失败，请检查 API Key"}</span>}
+      {/* ── Translate & Summary Tab ── */}
+      {activeTab === "translate" && (
+        <div style={{ padding: "14px" }}>
+
+          {/* No API key notice */}
+          {!hasApiKey && (
+            <div style={{
+              background: "#fffbeb",
+              border: "1px solid #fde68a",
+              borderRadius: "8px",
+              padding: "10px 12px",
+              marginBottom: "12px",
+              fontSize: "12px",
+              color: "#92400e",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}>
+              <span style={{ fontSize: "15px" }}>💡</span>
+              点击右上角「设置」配置 API Key 即可开始
             </div>
           )}
 
-          {/* 总结结果 */}
-          {summaryStatus !== "idle" && (
-            <div style={{ padding: "10px 12px", borderRadius: "4px", fontSize: "13px", lineHeight: "1.6", ...summaryStatusStyle(summaryStatus) }}>
-              {summaryStatus === "summarizing" && <span>⏳ AI 正在总结...</span>}
-              {summaryStatus === "done" && (
-                <div style={{ whiteSpace: "pre-line" }}>{summary}</div>
+          {/* Translate + Toggle row */}
+          <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+            <button
+              onClick={isTranslating ? handleStop : handleTranslate}
+              disabled={!isTranslating && !hasApiKey}
+              style={{
+                flex: 1,
+                padding: "11px 14px",
+                background: isTranslating
+                  ? "linear-gradient(135deg, #dc2626, #ef4444)"
+                  : hasApiKey
+                    ? "linear-gradient(135deg, #1d4ed8, #3b82f6)"
+                    : "#e5e7eb",
+                color: "white",
+                border: "none",
+                borderRadius: "10px",
+                fontSize: "13px",
+                fontWeight: "600",
+                cursor: (!isTranslating && !hasApiKey) ? "not-allowed" : "pointer",
+                transition: "all 0.2s",
+                fontFamily: "inherit",
+                boxShadow: hasApiKey ? (isTranslating ? "0 3px 10px rgba(220,38,38,0.35)" : "0 3px 10px rgba(29,78,216,0.3)") : "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+              }}>
+              {isTranslating ? "⏹ 停止翻译" : "🌐 翻译当前页面"}
+            </button>
+
+            <button
+              onClick={handleToggleVisibility}
+              title={showTranslations ? "隐藏翻译内容" : "显示翻译内容"}
+              style={{
+                padding: "11px 14px",
+                background: showTranslations ? "white" : "#f9fafb",
+                color: showTranslations ? "#374151" : "#9ca3af",
+                border: `1px solid ${showTranslations ? "#d1d5db" : "#e5e7eb"}`,
+                borderRadius: "10px",
+                fontSize: "16px",
+                cursor: "pointer",
+                transition: "all 0.15s",
+                lineHeight: "1",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}>
+              {showTranslations ? "👁️" : "🙈"}
+            </button>
+          </div>
+
+          {/* AI Summary button */}
+          <button
+            onClick={handleSummarize}
+            disabled={isSummarizing || !hasSummaryKey}
+            style={{
+              width: "100%",
+              padding: "11px",
+              background: isSummarizing
+                ? "#7c3aed"
+                : hasSummaryKey
+                  ? "linear-gradient(135deg, #6d28d9, #a855f7)"
+                  : "#e5e7eb",
+              color: "white",
+              border: "none",
+              borderRadius: "10px",
+              fontSize: "13px",
+              fontWeight: "600",
+              cursor: (isSummarizing || !hasSummaryKey) ? "not-allowed" : "pointer",
+              transition: "all 0.2s",
+              marginBottom: "12px",
+              fontFamily: "inherit",
+              boxShadow: hasSummaryKey ? "0 3px 10px rgba(109,40,217,0.3)" : "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "6px",
+            }}>
+            {isSummarizing ? "⏳ AI 正在分析..." : "✨ AI 摘要当前页面"}
+          </button>
+
+          {/* Translation progress / status */}
+          {transStatus !== "idle" && (
+            <div style={{
+              background: "white",
+              border: `1px solid ${transStatus === "done" ? "#bbf7d0" : transStatus === "error" ? "#fecaca" : transStatus === "stopped" ? "#e5e7eb" : "#fed7aa"}`,
+              borderRadius: "10px",
+              padding: "12px",
+              marginBottom: summaryStatus !== "idle" ? "8px" : 0,
+            }}>
+              {transStatus === "translating" && (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                    <span style={{ fontSize: "12px", fontWeight: "600", color: "#92400e" }}>⏳ 正在翻译...</span>
+                    {progress.total > 0 && (
+                      <span style={{ fontSize: "11px", color: "#9ca3af", fontWeight: "500" }}>
+                        {progress.done} / {progress.total}
+                      </span>
+                    )}
+                  </div>
+                  {progress.total > 0 && (
+                    <>
+                      <div style={{ height: "5px", background: "#f3f4f6", borderRadius: "99px", overflow: "hidden" }}>
+                        <div style={{
+                          height: "100%",
+                          width: `${Math.round((progress.done / progress.total) * 100)}%`,
+                          background: "linear-gradient(90deg, #ff5500, #ff8c00)",
+                          borderRadius: "99px",
+                          transition: "width 0.35s ease",
+                        }} />
+                      </div>
+                      <div style={{ textAlign: "right", fontSize: "10px", color: "#d1d5db", marginTop: "3px" }}>
+                        {Math.round((progress.done / progress.total) * 100)}%
+                      </div>
+                    </>
+                  )}
+                </>
               )}
-              {summaryStatus === "error" && <span>✗ {summaryError}</span>}
+              {transStatus === "done" && (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#15803d", fontWeight: "500" }}>
+                  <span style={{ fontSize: "16px" }}>✅</span>
+                  翻译完成，共 {progress.total} 条
+                </div>
+              )}
+              {transStatus === "stopped" && (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#6b7280", fontWeight: "500" }}>
+                  <span style={{ fontSize: "16px" }}>⏹</span>
+                  已停止 · 完成 {progress.done} / {progress.total} 条
+                </div>
+              )}
+              {transStatus === "error" && (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#b91c1c", fontWeight: "500" }}>
+                  <span style={{ fontSize: "16px" }}>❌</span>
+                  {transError || "翻译失败，请检查 API Key"}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Summary result */}
+          {summaryStatus !== "idle" && (
+            <div style={{
+              background: "white",
+              border: `1px solid ${summaryStatus === "error" ? "#fecaca" : "#e9d5ff"}`,
+              borderRadius: "10px",
+              padding: "12px",
+            }}>
+              {summaryStatus === "summarizing" && (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#7c3aed", fontWeight: "500" }}>
+                  <span style={{ fontSize: "16px" }}>✨</span>
+                  AI 正在分析文章内容...
+                </div>
+              )}
+              {summaryStatus === "done" && (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
+                    <span style={{ fontSize: "14px" }}>✨</span>
+                    <span style={{ fontSize: "11px", fontWeight: "700", color: "#7c3aed", textTransform: "uppercase", letterSpacing: "0.05em" }}>AI 摘要</span>
+                  </div>
+                  <div style={{ whiteSpace: "pre-line", fontSize: "13px", color: "#374151", lineHeight: "1.75" }}>{summary}</div>
+                </>
+              )}
+              {summaryStatus === "error" && (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#b91c1c", fontWeight: "500" }}>
+                  <span style={{ fontSize: "16px" }}>❌</span>
+                  {summaryError}
+                </div>
+              )}
             </div>
           )}
         </div>
       )}
 
-      {/* 历史记录 Tab */}
+      {/* ── History Tab ── */}
       {activeTab === "history" && (
-        <div style={{ padding: "12px 20px 20px" }}>
+        <div style={{ padding: "12px 14px 16px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-            <span style={{ fontSize: "13px", color: "#666" }}>{history.length} 条记录</span>
+            <span style={{ fontSize: "11px", color: "#9ca3af", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              {history.length} 条摘要记录
+            </span>
             {history.length > 0 && (
               <button
                 onClick={handleClearHistory}
-                style={{ padding: "4px 10px", background: "none", border: "1px solid #ddd", borderRadius: "4px", fontSize: "12px", color: "#999", cursor: "pointer" }}>
+                style={{
+                  padding: "4px 10px",
+                  background: "none",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "6px",
+                  fontSize: "11px",
+                  color: "#9ca3af",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}>
                 清空
               </button>
             )}
           </div>
 
           {history.length === 0 ? (
-            <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px 0" }}>
-              暂无历史记录<br />
-              <span style={{ fontSize: "12px" }}>使用「AI 总结」后会保存在这里</span>
+            <div style={{ textAlign: "center", padding: "44px 0 36px" }}>
+              <div style={{ fontSize: "44px", marginBottom: "12px" }}>📚</div>
+              <div style={{ color: "#9ca3af", fontSize: "13px", lineHeight: "1.7" }}>
+                暂无历史记录
+              </div>
+              <div style={{ color: "#d1d5db", fontSize: "12px", marginTop: "4px" }}>
+                使用「AI 摘要」后会保存在这里
+              </div>
             </div>
           ) : (
-            <div style={{ maxHeight: "480px", overflowY: "auto" }}>
+            <div style={{ maxHeight: "460px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px" }}>
               {history.map((item, i) => (
                 <div
                   key={i}
-                  style={{ borderBottom: "1px solid #f0f0f0", paddingBottom: "12px", marginBottom: "12px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "4px" }}>
+                  style={{
+                    background: "white",
+                    borderRadius: "10px",
+                    border: "1px solid #e5e7eb",
+                    padding: "12px",
+                  }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "7px" }}>
                     <a
                       href={item.url}
                       target="_blank"
-                      style={{ color: "#0066cc", fontSize: "13px", fontWeight: "500", textDecoration: "none", flex: 1, marginRight: "8px", lineHeight: "1.4" }}>
+                      style={{
+                        color: "#1d4ed8",
+                        fontSize: "12px",
+                        fontWeight: "600",
+                        textDecoration: "none",
+                        flex: 1,
+                        marginRight: "8px",
+                        lineHeight: "1.5",
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                      }}>
                       {item.title}
                     </a>
-                    <span style={{ fontSize: "11px", color: "#bbb", whiteSpace: "nowrap", flexShrink: 0 }}>
+                    <span style={{ fontSize: "10px", color: "#d1d5db", whiteSpace: "nowrap", flexShrink: 0, paddingTop: "1px" }}>
                       {formatTime(item.timestamp)}
                     </span>
                   </div>
                   <div
                     style={{
-                      fontSize: "12px", color: "#444", lineHeight: "1.6", whiteSpace: "pre-line",
-                      maxHeight: expandedIndex === i ? "none" : "72px",
+                      fontSize: "12px",
+                      color: "#6b7280",
+                      lineHeight: "1.75",
+                      whiteSpace: "pre-line",
+                      maxHeight: expandedIndex === i ? "none" : "78px",
                       overflow: expandedIndex === i ? "visible" : "hidden",
-                      cursor: "pointer"
+                      cursor: "pointer",
+                      maskImage: expandedIndex === i ? "none" : "linear-gradient(to bottom, black 55%, transparent 100%)",
                     }}
                     onClick={() => setExpandedIndex(expandedIndex === i ? null : i)}>
                     {item.summary}
                   </div>
-                  {item.summary.split('\n').length > 3 && (
-                    <button
-                      onClick={() => setExpandedIndex(expandedIndex === i ? null : i)}
-                      style={{ background: "none", border: "none", color: "#999", fontSize: "11px", cursor: "pointer", padding: "2px 0" }}>
-                      {expandedIndex === i ? "收起" : "展开"}
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setExpandedIndex(expandedIndex === i ? null : i)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#c4b5fd",
+                      fontSize: "11px",
+                      fontWeight: "500",
+                      cursor: "pointer",
+                      padding: "5px 0 0",
+                      fontFamily: "inherit",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "2px",
+                    }}>
+                    {expandedIndex === i ? "▲ 收起" : "▼ 展开"}
+                  </button>
                 </div>
               ))}
             </div>
@@ -430,25 +710,6 @@ function IndexPopup() {
       )}
     </div>
   )
-}
-
-function transStatusStyle(s: TransStatus): React.CSSProperties {
-  switch (s) {
-    case "translating": return { background: "#fff8f0", border: "1px solid #ff6600", color: "#333" }
-    case "done":        return { background: "#f0fff4", border: "1px solid #4caf50", color: "#2e7d32" }
-    case "stopped":     return { background: "#f5f5f5", border: "1px solid #999",    color: "#555"   }
-    case "error":       return { background: "#fff0f0", border: "1px solid #e53935", color: "#c62828" }
-    default:            return {}
-  }
-}
-
-function summaryStatusStyle(s: SummaryStatus): React.CSSProperties {
-  switch (s) {
-    case "summarizing": return { background: "#f3e5f5", border: "1px solid #9c27b0", color: "#333" }
-    case "done":        return { background: "#f3e5f5", border: "1px solid #7b1fa2", color: "#333" }
-    case "error":       return { background: "#fff0f0", border: "1px solid #e53935", color: "#c62828" }
-    default:            return {}
-  }
 }
 
 export default IndexPopup
