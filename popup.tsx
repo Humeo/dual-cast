@@ -26,6 +26,8 @@ function IndexPopup() {
   const [apiKey, setApiKey] = useState("")
   const [apiProvider, setApiProvider] = useState("deepl")
   const [openaiKeyForSummary, setOpenaiKeyForSummary] = useState("")
+  const [apiBaseUrl, setApiBaseUrl] = useState("")
+  const [apiModel, setApiModel] = useState("")
   const [saved, setSaved] = useState(false)
   const [showTranslations, setShowTranslations] = useState(true)
 
@@ -47,11 +49,13 @@ function IndexPopup() {
 
   useEffect(() => {
     chrome.storage.local.get(
-      ["apiKey", "apiProvider", "openaiKeyForSummary", "showTranslations", "summaryHistory"],
+      ["apiKey", "apiProvider", "openaiKeyForSummary", "apiBaseUrl", "apiModel", "showTranslations", "summaryHistory"],
       (result) => {
         if (result.apiKey) setApiKey(result.apiKey)
         if (result.apiProvider) setApiProvider(result.apiProvider)
         if (result.openaiKeyForSummary) setOpenaiKeyForSummary(result.openaiKeyForSummary)
+        if (result.apiBaseUrl) setApiBaseUrl(result.apiBaseUrl)
+        if (result.apiModel) setApiModel(result.apiModel)
         setShowTranslations(result.showTranslations !== false)
         setHistory(result.summaryHistory || [])
       }
@@ -77,7 +81,7 @@ function IndexPopup() {
   }, [])
 
   const handleSave = () => {
-    chrome.storage.local.set({ apiKey, apiProvider, openaiKeyForSummary }, () => {
+    chrome.storage.local.set({ apiKey, apiProvider, openaiKeyForSummary, apiBaseUrl, apiModel }, () => {
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     })
@@ -252,6 +256,32 @@ function IndexPopup() {
               />
             </div>
           )}
+
+          {/* 自定义 API 地址 + 模型（OpenAI 兼容接口） */}
+          <div style={{ marginBottom: "12px" }}>
+            <label style={{ display: "block", marginBottom: "6px", fontWeight: "500", fontSize: "13px" }}>
+              API 地址 <span style={{ color: "#999", fontWeight: "400" }}>(选填，默认 OpenAI 官方)</span>
+            </label>
+            <input
+              type="text"
+              value={apiBaseUrl}
+              onChange={(e) => setApiBaseUrl(e.target.value)}
+              placeholder="https://api.openai.com"
+              style={{ width: "100%", padding: "7px", borderRadius: "4px", border: "1px solid #ddd", fontSize: "13px", boxSizing: "border-box" }}
+            />
+          </div>
+          <div style={{ marginBottom: "12px" }}>
+            <label style={{ display: "block", marginBottom: "6px", fontWeight: "500", fontSize: "13px" }}>
+              模型 <span style={{ color: "#999", fontWeight: "400" }}>(选填，默认 gpt-4o-mini)</span>
+            </label>
+            <input
+              type="text"
+              value={apiModel}
+              onChange={(e) => setApiModel(e.target.value)}
+              placeholder="gpt-4o-mini"
+              style={{ width: "100%", padding: "7px", borderRadius: "4px", border: "1px solid #ddd", fontSize: "13px", boxSizing: "border-box" }}
+            />
+          </div>
 
           {/* 保存 */}
           <button

@@ -49,7 +49,7 @@ async function flushQueue() {
   if (requestQueue.length === 0) return
 
   const batch = requestQueue.splice(0, BATCH_SIZE)
-  const settings = await chrome.storage.local.get(["apiKey", "apiProvider"])
+  const settings = await chrome.storage.local.get(["apiKey", "apiProvider", "apiBaseUrl", "apiModel"])
 
   if (!settings.apiKey) {
     const err = new Error("请先在插件设置中配置 API Key")
@@ -58,12 +58,14 @@ async function flushQueue() {
   }
 
   const provider = settings.apiProvider || "openai"
+  const baseUrl = (settings.apiBaseUrl || "https://api.openai.com").replace(/\/$/, "")
+  const model = settings.apiModel || "gpt-4o-mini"
 
   // OpenAI 不支持批量，逐条发送
   if (provider === "openai") {
     for (const item of batch) {
       try {
-        const translation = await translateWithOpenAI(item.text, item.targetLang, settings.apiKey)
+        const translation = await translateWithOpenAI(item.text, item.targetLang, settings.apiKey, baseUrl, model)
         translationCache.set(`${item.text}:${item.targetLang}`, translation)
         item.resolve(translation)
       } catch (e) {
@@ -102,16 +104,17 @@ chrome.runtime.onMessage.addListener((request: TranslationRequest, sender, sendR
   }
 
   if (request.type === "SUMMARIZE") {
-    chrome.storage.local.get(["apiKey", "apiProvider", "openaiKeyForSummary"], async (settings) => {
-      // 优先用专用 openai key，否则用主 key（仅 openai provider 时）
+    chrome.storage.local.get(["apiKey", "apiProvider", "openaiKeyForSummary", "apiBaseUrl", "apiModel"], async (settings) => {
       const key = settings.openaiKeyForSummary ||
         (settings.apiProvider === "openai" ? settings.apiKey : null)
       if (!key) {
         sendResponse({ error: "总结功能需要 OpenAI API Key" })
         return
       }
+      const baseUrl = (settings.apiBaseUrl || "https://api.openai.com").replace(/\/$/, "")
+      const model = settings.apiModel || "gpt-4o-mini"
       try {
-        const summary = await summarizeWithOpenAI(request.text, request.title, key)
+        const summary = await summarizeWithOpenAI(request.text, request.title, key, baseUrl, model)
         sendResponse({ summary })
       } catch (e) {
         sendResponse({ error: (e as Error).message })
@@ -150,17 +153,17 @@ async function handleTranslation(text: string, targetLang: string): Promise<stri
 }
 
 // OpenAI 翻译
-async function translateWithOpenAI(text: string, targetLang: string, apiKey: string): Promise<string> {
+async function translateWithOpenAI(text: string, targetLang: string, apiKey: string, baseUrl: string, model: string): Promise<string> {
   const targetLanguage = targetLang === "zh" ? "中文" : "English"
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch(`${baseUrl}/v1/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
+      model,
       messages: [
         {
           role: "system",
@@ -222,16 +225,16 @@ async function translateBatchWithDeepL(texts: string[], targetLang: string, apiK
 }
 
 // AI 摘要
-async function summarizeWithOpenAI(text: string, title: string, apiKey: string): Promise<string> {
+async function summarizeWithOpenAI(text: string, title: string, apiKey: string, baseUrl: string, model: string): Promise<string> {
   const truncated = text.slice(0, 8000)
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch(`${baseUrl}/v1/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
+      model,
       messages: [
         {
           role: "system",
