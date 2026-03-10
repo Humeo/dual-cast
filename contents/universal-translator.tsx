@@ -46,20 +46,38 @@ function detectArticle() {
     const reader = new Readability(documentClone)
     const article = reader.parse()
 
-    if (!article || !article.textContent || article.textContent.length < 200) {
-      return null
+    // 尝试具体选择器
+    const SELECTORS =
+      'article p, .post-content p, .entry-content p, .article-content p, ' +
+      '.content p, .story-body p, .article-body p, .td-post-content p, ' +
+      '.jeg_post_content p, main p, [role="main"] p, #content p, #main p'
+
+    let paragraphs = Array.from(document.querySelectorAll(SELECTORS))
+      .filter((p) => (p.textContent?.trim() || "").length > 50) as HTMLElement[]
+
+    // 兜底：页面上所有 <p>，过滤掉导航/页脚噪声
+    if (paragraphs.length === 0) {
+      paragraphs = Array.from(document.querySelectorAll('p'))
+        .filter((p) => {
+          const text = p.textContent?.trim() || ""
+          if (text.length < 50) return false
+          // 跳过明显的导航/版权行
+          const tag = p.closest('nav, footer, header, aside')
+          return !tag
+        }) as HTMLElement[]
     }
 
-    const paragraphs = Array.from(
-      document.querySelectorAll(
-        'article p, .post-content p, .entry-content p, .article-content p, main p, [role="main"] p'
-      )
-    ).filter((p) => {
-      const text = p.textContent?.trim() || ""
-      return text.length > 50
-    }) as HTMLElement[]
+    // Readability 成功：用解析到的标题
+    if (article && article.textContent && article.textContent.length >= 200) {
+      return { title: article.title, paragraphs }
+    }
 
-    return { title: article.title, paragraphs }
+    // Readability 失败但页面有段落：用 document.title
+    if (paragraphs.length > 0) {
+      return { title: document.title, paragraphs }
+    }
+
+    return null
   } catch (error) {
     console.error("Article detection error:", error)
     return null
